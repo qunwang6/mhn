@@ -2,7 +2,6 @@ import sys
 import json
 import hpfeeds
 import logging
-import GeoIP
 from hpfeedslogger import processors
 import pymongo
 import requests
@@ -30,36 +29,6 @@ DEFAULT_CHANNELS = [
     "suricata.events",
     "wordpot.events",
 ]
-
-def geo_intel(maxmind_geo, maxmind_asn, ip):
-    result = {
-        'city': None,
-        'region_name': None,
-        'region': None,
-        'area_code': None,
-        'time_zone': None,
-        'longitude': None,
-        'metro_code': None,
-        'country_code3': None,
-        'latitude': None,
-        'postal_code': None,
-        'dma_code': None,
-        'country_code': None,
-        'country_name': None,
-        'org': None
-    }
-
-    geo = maxmind_geo.record_by_addr(ip)
-    if geo:
-        if geo['city'] is not None:
-            geo['city'] = geo['city'].decode('latin1')
-        result.update(geo)
-
-    org = maxmind_asn.org_by_addr(ip)
-    if org:
-        result['org'] = org.decode('latin-1')
-
-    return result
 
 def ensure_user_permissions(ident, secret, publish, subscribe):
     rec = {
@@ -122,16 +91,12 @@ def main():
     ensure_user_permissions(cfg['IDENT'], cfg['SECRET'], [], cfg['CHANNELS'])
     subscriber = hpfeeds_connect(cfg['HOST'], cfg['PORT'], cfg['IDENT'], cfg['SECRET'])
     publisher = hpfeeds_connect(cfg['RHOST'], cfg['RPORT'], cfg['RIDENT'], cfg['RSECRET'])
-    processor = processors.HpfeedsMessageProcessor()
-    maxmind_geo = GeoIP.open(cfg['IP_GEO_DB'], GeoIP.GEOIP_STANDARD)
-    maxmind_asn = GeoIP.open(cfg['IP_ASN_DB'], GeoIP.GEOIP_STANDARD)
+    processor = processors.HpfeedsMessageProcessor(cfg['IP_GEO_DB'], cfg['IP_ASN_DB'])
 
     def on_message(identifier, channel, payload):
         try:
             results = processor.process(identifier, channel, payload, ignore_errors=True)
             for message in results:
-                message['src_geo'] = geo_intel(maxmind_geo, maxmind_asn, message.get('src_ip'))
-                message['dest_geo'] = geo_intel(maxmind_geo, maxmind_asn, message.get('dest_ip'))
                 message['mhn_uuid'] = mhn_uuid
                 message['mhn_ip'] = ip
 
