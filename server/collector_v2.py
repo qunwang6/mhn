@@ -15,6 +15,21 @@ logger = logging.getLogger("collector")
 logger.addHandler(ch)
 logger.setLevel(logging.DEBUG)
 
+DEFAULT_CHANNELS = [
+    "amun.events",
+    "beeswarm.hive",
+    "conpot.events",
+    "dionaea.capture",
+    "dionaea.connections",
+    "elastichoney.events",
+    "glastopf.events",
+    "kippo.sessions",
+    "p0f.events",
+    "shockpot.events",
+    "snort.alerts",
+    "suricata.events",
+    "wordpot.events",
+]
 
 def geo_intel(maxmind_geo, maxmind_asn, ip):
     result = {
@@ -59,23 +74,6 @@ def ensure_user_permissions(ident, secret, publish, subscribe):
     client.fsync()
     client.close()
 
-
-DEFAULT_CHANNELS = [
-    "amun.events",
-    "beeswarm.hive",
-    "conpot.events",
-    "dionaea.capture",
-    "dionaea.connections",
-    "elastichoney.events",
-    "glastopf.events",
-    "kippo.sessions",
-    "p0f.events",
-    "shockpot.events",
-    "snort.alerts",
-    "suricata.events",
-    "wordpot.events",
-]
-
 def hpfeeds_connect(host, port, ident, secret):
     logger.info('Connecting to %s@%s:%s ...', ident, host, port)
     try:
@@ -92,7 +90,6 @@ def main():
         PORT=10000,
         CHANNELS=DEFAULT_CHANNELS,
         IDENT='collector',
-        #SECRET='',
         RHOST='mhnbroker.threatstream.com',
         RPORT=10000,
         RCHANNEL='mhn-community-v2.events',
@@ -117,9 +114,9 @@ def main():
         logger.warning("Warning: no config found, using default values for hpfeeds server")
 
     try:
-        mhn_ip = requests.get('http://ipv4.icanhazip.com/').text.strip()
+        ip = requests.get('http://ipv4.icanhazip.com/').text.strip()
     except:
-        mhn_ip = None
+        ip = None
     mhn_uuid = cfg['MHN_UUID']
 
     ensure_user_permissions(cfg['IDENT'], cfg['SECRET'], [], cfg['CHANNELS'])
@@ -130,14 +127,13 @@ def main():
     maxmind_asn = GeoIP.open(cfg['IP_ASN_DB'], GeoIP.GEOIP_STANDARD)
 
     def on_message(identifier, channel, payload):
-        print 'message from {} on {}'.format(identifier, channel)
         try:
             results = processor.process(identifier, channel, payload, ignore_errors=True)
             for message in results:
                 message['src_geo'] = geo_intel(maxmind_geo, maxmind_asn, message.get('src_ip'))
                 message['dest_geo'] = geo_intel(maxmind_geo, maxmind_asn, message.get('dest_ip'))
                 message['mhn_uuid'] = mhn_uuid
-                message['mhn_ip'] = mhn_ip
+                message['mhn_ip'] = ip
 
                 if 'dest_ip' in message:
                     # remove the honeypot IP if there is one
